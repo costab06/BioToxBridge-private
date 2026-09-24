@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioToxBridge</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #f8f9fb;
+  --surface: #ffffff;
+  --border:  #dde1e7;
+  --text:    #1a1d23;
+  --muted:   #6b7280;
+  --accent:  #1e5fa8;
+  --green:   #16a34a;
+  --red:     #dc2626;
+  --orange:  #ea580c;
+  --teal:    #0d9488;
+  --mono:    'SFMono-Regular', 'Consolas', monospace;
+  --radius:  6px;
+  --shadow:  0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px; line-height: 1.5;
+  color: var(--text); background: var(--bg);
+}
+
+/* ── Header ── */
+header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 52px;
+}
+.header-title    { font-size: 15px; font-weight: 700; color: var(--accent); }
+.header-subtitle { font-size: 12px; color: var(--muted); }
+.header-spacer   { flex: 1; }
+#conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #d1d5db; display: inline-block; margin-right: 6px;
+}
+#conn-dot.ok  { background: var(--green); }
+#conn-dot.err { background: var(--red); }
+#conn-text { font-size: 12px; color: var(--muted); }
+
+/* ── Layout ── */
+main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+.section { margin-bottom: 32px; }
+h2 {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px;
+}
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.tab {
+  padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
+  border: none; background: none; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Input area ── */
+.input-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+.input-row { display: flex; gap: 8px; align-items: flex-start; }
+textarea {
+  flex: 1; font-family: var(--mono); font-size: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 10px; resize: vertical; min-height: 90px;
+  background: #fafbfc; color: var(--text);
+}
+textarea:focus { outline: none; border-color: var(--accent); }
+.btn {
+  padding: 7px 16px; border-radius: var(--radius); border: none;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  background: var(--accent); color: #fff; white-space: nowrap;
+}
+.btn:hover  { opacity: .9; }
+.btn:active { opacity: .8; }
+.btn.secondary {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn.danger { background: var(--red); }
+
+/* ── Model filter chips ── */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip {
+  font-size: 11px; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  user-select: none;
+}
+.chip.on  { background: var(--accent); color: #fff; border-color: var(--accent); }
+.chip-group-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); align-self: center;
+  margin-right: 2px;
+}
+
+/* ── Results table ── */
+.results-wrap { overflow-x: auto; }
+table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+  background: var(--surface);
+}
+th {
+  text-align: left; padding: 7px 10px; background: #f1f3f6;
+  border-bottom: 1px solid var(--border); font-weight: 600;
+  font-size: 11px; white-space: nowrap; color: var(--muted);
+}
+td {
+  padding: 7px 10px; border-bottom: 1px solid #f0f2f5;
+  font-family: var(--mono); vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafbfd; }
+.smiles-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pred-cell { text-align: center; }
+
+/* ── Prediction badges ── */
+.pred-active   { background: #fef2f2; color: var(--red);   padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 11px; }
+.pred-inactive { background: #f0fdf4; color: var(--green); padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 11px; }
+.pred-value    { color: var(--teal); font-weight: 600; }
+.pred-missing  { color: #d1d5db; }
+.pred-invalid  { color: var(--orange); font-style: italic; }
+
+/* ── Model grid ── */
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+.model-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow);
+}
+.model-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.model-name   { font-weight: 600; font-size: 13px; }
+.badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.badge-nr    { background: #eff6ff; color: #1d4ed8; }
+.badge-sr    { background: #f0fdf4; color: #166534; }
+.badge-extra { background: #fdf4ff; color: #7e22ce; }
+.badge-type-cls  { background: #fff7ed; color: #c2410c; }
+.badge-type-reg  { background: #f0fdfa; color: #065f46; }
+.model-desc   { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.model-stats  { font-size: 11px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+.model-stat span { font-weight: 600; color: var(--text); }
+.model-actions { margin-top: 8px; display: flex; gap: 6px; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+
+/* ── Status dot ── */
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot-ok  { background: var(--green); }
+.dot-off { background: #d1d5db; }
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid #e5e7eb; border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty / error state ── */
+.empty { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+.error-msg { color: var(--red); font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="header-title">BioToxBridge</div>
+    <div class="header-subtitle">Multi-dataset toxicity prediction</div>
+  </div>
+  <div class="header-spacer"></div>
+  <div><span id="conn-dot"></span><span id="conn-text">checking…</span></div>
+</header>
+
+<main>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="predict">Predict</button>
+    <button class="tab" data-tab="models">Models</button>
+  </div>
+
+  <!-- ── Predict tab ─────────────────────────────────────────────────────── -->
+  <div id="tab-predict" class="tab-panel active">
+
+    <div class="section">
+      <h2>Input — SMILES</h2>
+      <div class="input-card">
+        <div class="input-row">
+          <textarea id="smiles-input" placeholder="One SMILES per line&#10;e.g.&#10;CCO&#10;c1ccccc1&#10;CC(=O)Oc1ccccc1C(=O)O"></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn" id="btn-predict">Run Prediction</button>
+            <button class="btn secondary" id="btn-import-tox21" title="Pull SMILES predictions from tox21_demo and add BioToxBridge models">Import from Tox21</button>
+            <button class="btn secondary" id="btn-clear">Clear</button>
+          </div>
+        </div>
+        <div id="pred-error" class="error-msg" style="display:none"></div>
+
+        <div class="chip-row" id="model-chips">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="results-section" style="display:none">
+      <h2>Results</h2>
+      <div class="results-wrap">
+        <table id="results-table">
+          <thead id="results-thead"></thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /tab-predict -->
+
+  <!-- ── Models tab ─────────────────────────────────────────────────────── -->
+  <div id="tab-models" class="tab-panel">
+    <div class="section">
+      <h2>Model registry</h2>
+      <div id="model-grid" class="model-grid">
+        <div class="empty"><span class="spinner"></span> Loading…</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+    if (t.dataset.tab === 'models') loadModels();
+  });
+});
+
+// ── Connection check ──────────────────────────────────────────────────────────
+async function checkConn() {
+  try {
+    const r = await fetch('/api/models');
+    const dot = document.getElementById('conn-dot');
+    const txt = document.getElementById('conn-text');
+    if (r.ok) {
+      dot.className = 'ok'; txt.textContent = 'nnsd_client connected';
+    } else {
+      dot.className = 'err'; txt.textContent = 'nnsd_client error';
+    }
+  } catch {
+    document.getElementById('conn-dot').className = 'err';
+    document.getElementById('conn-text').textContent = 'nnsd_client unreachable';
+  }
+}
+checkConn();
+
+// ── Model chips for prediction filter ────────────────────────────────────────
+let allModels = [];
+let selectedModels = new Set();
+
+async function loadChips() {
+  const r = await fetch('/api/models');
+  if (!r.ok) return;
+  allModels = await r.json();
+  selectedModels = new Set(allModels.map(m => m.key));
+
+  // Group by group name
+  const groups = {};
+  for (const m of allModels) {
+    if (!groups[m.group]) groups[m.group] = [];
+    groups[m.group].push(m);
+  }
+
+  const row = document.getElementById('model-chips');
+  row.innerHTML = '';
+
+  // "All" toggle
+  const allChip = document.createElement('span');
+  allChip.className = 'chip on';
+  allChip.textContent = 'All';
+  allChip.addEventListener('click', () => {
+    const allOn = selectedModels.size === allModels.length;
+    if (allOn) {
+      selectedModels.clear();
+      allChip.classList.remove('on');
+      row.querySelectorAll('.chip:not(:first-child)').forEach(c => c.classList.remove('on'));
+    } else {
+      selectedModels = new Set(allModels.map(m => m.key));
+      allChip.classList.add('on');
+      row.querySelectorAll('.chip:not(:first-child)').forEach(c => c.classList.add('on'));
+    }
+  });
+  row.appendChild(allChip);
+
+  for (const [group, models] of Object.entries(groups)) {
+    const lbl = document.createElement('span');
+    lbl.className = 'chip-group-label';
+    lbl.textContent = group.replace('Tox21 — ', '');
+    row.appendChild(lbl);
+    for (const m of models) {
+      const chip = document.createElement('span');
+      chip.className = 'chip on';
+      chip.textContent = m.label;
+      chip.title = m.description;
+      chip.dataset.key = m.key;
+      chip.addEventListener('click', () => {
+        if (selectedModels.has(m.key)) {
+          selectedModels.delete(m.key);
+          chip.classList.remove('on');
+        } else {
+          selectedModels.add(m.key);
+          chip.classList.add('on');
+        }
+        allChip.classList.toggle('on', selectedModels.size === allModels.length);
+      });
+      row.appendChild(chip);
+    }
+  }
+}
+loadChips();
+
+// ── Prediction ────────────────────────────────────────────────────────────────
+document.getElementById('btn-predict').addEventListener('click', runPredict);
+document.getElementById('btn-clear').addEventListener('click', () => {
+  document.getElementById('smiles-input').value = '';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('pred-error').style.display = 'none';
+});
+
+document.getElementById('btn-import-tox21').addEventListener('click', runImport);
+
+async function runPredict() {
+  const raw = document.getElementById('smiles-input').value.trim();
+  if (!raw) return;
+  const smiles = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  const errEl = document.getElementById('pred-error');
+  errEl.style.display = 'none';
+
+  const btn = document.getElementById('btn-predict');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const r = await fetch('/api/predict', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({smiles, models: [...selectedModels]}),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Prediction failed'; errEl.style.display = ''; return; }
+    renderResults(data.compounds);
+  } catch(e) {
+    errEl.textContent = String(e); errEl.style.display = '';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run Prediction';
+  }
+}
+
+async function runImport() {
+  const raw = document.getElementById('smiles-input').value.trim();
+  if (!raw) return;
+  const smiles = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  const errEl = document.getElementById('pred-error');
+  errEl.style.display = 'none';
+
+  const btn = document.getElementById('btn-import-tox21');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const r = await fetch('/api/import/tox21', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({smiles}),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Import failed'; errEl.style.display = ''; return; }
+    renderResults(data.compounds);
+  } catch(e) {
+    errEl.textContent = String(e); errEl.style.display = '';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Import from Tox21';
+  }
+}
+
+function renderResults(compounds) {
+  if (!compounds.length) return;
+
+  // Collect all prediction keys present in any compound
+  const predKeys = new Set();
+  for (const c of compounds)
+    for (const k of Object.keys(c.predictions || {}))
+      predKeys.add(k);
+  const keys = [...predKeys].sort();
+
+  // Build model lookup for display info
+  const modelInfo = {};
+  for (const m of allModels) modelInfo[m.key] = m;
+
+  // Header
+  const thead = document.getElementById('results-thead');
+  thead.innerHTML = '';
+  const hr = thead.insertRow();
+  addTH(hr, 'SMILES');
+  for (const k of keys) {
+    const m = modelInfo[k];
+    addTH(hr, m ? m.label : k, m ? m.description : '');
+  }
+
+  // Body
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  for (const c of compounds) {
+    const row = tbody.insertRow();
+    const td0 = row.insertCell();
+    td0.className = 'smiles-cell';
+    td0.title = c.smiles;
+    td0.textContent = c.smiles;
+    if (!c.valid) td0.innerHTML += ' <span class="pred-invalid">(invalid)</span>';
+
+    for (const k of keys) {
+      const td = row.insertCell();
+      td.className = 'pred-cell';
+      const p = (c.predictions || {})[k];
+      if (!p) {
+        td.innerHTML = '<span class="pred-missing">—</span>';
+      } else if (p.value !== undefined) {
+        // regression
+        td.innerHTML = `<span class="pred-value">${p.value.toFixed(3)}</span>`;
+        if (p.units) td.title = p.units;
+      } else {
+        // classification
+        if (p.class === 1) {
+          td.innerHTML = '<span class="pred-active">Active</span>';
+        } else if (p.class === 0) {
+          td.innerHTML = '<span class="pred-inactive">Inactive</span>';
+        } else {
+          td.innerHTML = '<span class="pred-missing">—</span>';
+        }
+      }
+    }
+  }
+
+  document.getElementById('results-section').style.display = '';
+}
+
+function addTH(row, text, title) {
+  const th = document.createElement('th');
+  th.textContent = text;
+  if (title) th.title = title;
+  row.appendChild(th);
+}
+
+// ── Models tab ────────────────────────────────────────────────────────────────
+async function loadModels() {
+  const grid = document.getElementById('model-grid');
+  grid.innerHTML = '<div class="empty"><span class="spinner"></span> Loading…</div>';
+  const r = await fetch('/api/models');
+  if (!r.ok) { grid.innerHTML = '<div class="empty">Failed to load models.</div>'; return; }
+  const models = await r.json();
+
+  // Group by group
+  const groups = {};
+  for (const m of models) {
+    if (!groups[m.group]) groups[m.group] = [];
+    groups[m.group].push(m);
+  }
+
+  grid.innerHTML = '';
+  for (const [group, ms] of Object.entries(groups)) {
+    const lbl = document.createElement('h2');
+    lbl.textContent = group;
+    lbl.style.gridColumn = '1/-1';
+    grid.appendChild(lbl);
+
+    for (const m of ms) {
+      const card = document.createElement('div');
+      card.className = 'model-card';
+
+      const grpBadge = m.group.startsWith('Tox21 — Nuclear') ? 'badge-nr'
+                     : m.group.startsWith('Tox21 — Stress')  ? 'badge-sr'
+                     : 'badge-extra';
+      const typeBadge = m.type === 'regression' ? 'badge-type-reg' : 'badge-type-cls';
+      const dotCls    = m.trained ? 'dot-ok' : 'dot-off';
+      const accText   = m.trained && m.accuracy != null
+                          ? `${m.accuracy.toFixed(1)}%`
+                          : (m.trained ? 'trained' : 'not trained');
+
+      card.innerHTML = `
+        <div class="model-header">
+          <span class="dot ${dotCls}"></span>
+          <span class="model-name">${m.label}</span>
+          <span class="badge ${grpBadge}">${m.group.replace('Tox21 — ','')}</span>
+          <span class="badge ${typeBadge}">${m.type}</span>
+        </div>
+        <div class="model-desc">${m.description}</div>
+        <div class="model-stats">
+          <div>Status: <span>${m.trained ? 'Trained' : 'Untrained'}</span></div>
+          ${m.trained ? `<div>Accuracy: <span>${accText}</span></div>` : ''}
+          ${m.trainDate ? `<div>Date: <span>${m.trainDate.slice(0,10)}</span></div>` : ''}
+          ${m.units ? `<div>Units: <span>${m.units}</span></div>` : ''}
+        </div>
+        <div class="model-actions">
+          <button class="btn btn-sm" onclick="trainModel('${m.key}', false)">Train</button>
+          <button class="btn btn-sm secondary" onclick="trainModel('${m.key}', true)">Retrain</button>
+          <button class="btn btn-sm secondary" onclick="viewHistory('${m.key}')">History</button>
+        </div>
+        <div id="status-${m.key}" style="font-size:11px;margin-top:6px;color:var(--muted)"></div>
+      `;
+      grid.appendChild(card);
+    }
+  }
+}
+
+async function trainModel(key, retrain) {
+  const el = document.getElementById('status-' + key);
+  el.innerHTML = '<span class="spinner"></span> Submitting…';
+  try {
+    const r = await fetch(`/api/models/${key}/train`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({retrain}),
+    });
+    const d = await r.json();
+    el.textContent = r.ok
+      ? `Job submitted (netID ${d.netID || '?'}) — monitor in nnsd_client`
+      : (d.error || 'Error');
+  } catch(e) {
+    el.textContent = String(e);
+  }
+}
+
+async function viewHistory(key) {
+  const r = await fetch(`/api/models/${key}/history`);
+  if (!r.ok) { alert('No history available'); return; }
+  const data = await r.json();
+  if (!data.length) { alert('No training history for this model.'); return; }
+  const last = data[data.length - 1];
+  alert(`Last run:\n  Date:     ${last.startTime || '?'}\n  Passes:   ${last.passes}\n  Accuracy: ${last.finalAccuracy?.toFixed(2)}%\n  Success:  ${last.success}`);
+}
+</script>
+</body>
+</html>
