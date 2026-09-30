@@ -48,12 +48,10 @@ def train_model(
     if alphas is None:
         alphas = tuple(np.logspace(-3, 4, 30))
 
-    ridge = RidgeCV(alphas=alphas, cv=cv, scoring="r2", store_cv_results=True)
+    ridge = RidgeCV(alphas=alphas, cv=cv, scoring="r2")
     ridge.fit(X_train, y_train)
 
     best_alpha = float(ridge.alpha_)
-    # cv_values: shape (n_samples, n_alphas) — mean over samples for diagnostics
-    best_alpha_idx = list(alphas).index(best_alpha) if best_alpha in alphas else -1
 
     info = {
         "model_id":   model_id,

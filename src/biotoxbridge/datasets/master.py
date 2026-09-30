@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from biotoxbridge.features.tox21_adapter import TOX21_SCORE_FIELDS  # noqa: re-export
+
 # Columns that constitute the final master table (in order).
 MASTER_FIELDS = [
     # Identity
@@ -33,13 +35,6 @@ MASTER_FIELDS = [
     "loael_mg_kg_day_median", "loael_mg_kg_day_min", "loael_mg_kg_day_max",
     "log10_loael_median",
     # Tox21 scores (12 endpoints — appended dynamically)
-]
-
-TOX21_SCORE_FIELDS = [
-    "tox21_NR-AR", "tox21_NR-AR-LBD", "tox21_NR-AhR", "tox21_NR-Aromatase",
-    "tox21_NR-ER", "tox21_NR-ER-LBD", "tox21_NR-PPAR-gamma",
-    "tox21_SR-ARE", "tox21_SR-ATAD5", "tox21_SR-HSE", "tox21_SR-MMP",
-    "tox21_SR-p53",
 ]
 
 ALL_MASTER_FIELDS = MASTER_FIELDS + TOX21_SCORE_FIELDS

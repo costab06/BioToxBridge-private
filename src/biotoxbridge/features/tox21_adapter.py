@@ -15,6 +15,7 @@ Usage:
     scores  = adapter.score_records(enriched_records)   # list[dict]
 """
 
+import os
 import sys
 import time
 from typing import Any
@@ -25,6 +26,25 @@ TOX21_ENDPOINTS = [
     "NR-ER", "NR-ER-LBD", "NR-PPAR-gamma",
     "SR-ARE", "SR-ATAD5", "SR-HSE", "SR-MMP", "SR-p53",
 ]
+
+# Column names in the master/scored record dicts
+TOX21_SCORE_FIELDS = [f"tox21_{ep}" for ep in TOX21_ENDPOINTS]
+
+# Map canonical endpoint name → nnsd_client model name (snake_case)
+_ENDPOINT_TO_MODEL = {
+    "NR-AR":         "nr_ar",
+    "NR-AR-LBD":     "nr_ar_lbd",
+    "NR-AhR":        "nr_ahr",
+    "NR-Aromatase":  "nr_aromatase",
+    "NR-ER":         "nr_er",
+    "NR-ER-LBD":     "nr_er_lbd",
+    "NR-PPAR-gamma": "nr_ppar_gamma",
+    "SR-ARE":        "sr_are",
+    "SR-ATAD5":      "sr_atad5",
+    "SR-HSE":        "sr_hse",
+    "SR-MMP":        "sr_mmp",
+    "SR-p53":        "sr_p53",
+}
 
 _RETRIES = 3
 _TIMEOUT = 30
@@ -39,6 +59,7 @@ class Tox21Adapter:
         n_bits: int = 2048,
         retries: int = _RETRIES,
         timeout: int = _TIMEOUT,
+        api_key: str | None = None,
     ):
         self.base_url  = base_url.rstrip("/")
         self.endpoints = endpoints or TOX21_ENDPOINTS
@@ -46,22 +67,26 @@ class Tox21Adapter:
         self.n_bits    = n_bits
         self.retries   = retries
         self.timeout   = timeout
+        self.api_key   = api_key or os.environ.get("NNSD_KEY", "admin-secret-key-change-me")
 
     # ── low-level ─────────────────────────────────────────────────────────────
 
     def _predict_one(self, session: Any, model_name: str,
                      features: list[float]) -> float:
         import requests
-        url = f"{self.base_url}/api/models/{model_name}/predict"
-        payload = {"features": features, "categorical": False}
+        url     = f"{self.base_url}/api/models/{model_name}/predict"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        payload = {"rows": [features]}
         for attempt in range(self.retries + 1):
             try:
-                r = session.post(url, json=payload, timeout=self.timeout)
+                r = session.post(url, json=payload, headers=headers,
+                                 timeout=self.timeout)
                 if not r.ok:
                     raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
                 data = r.json()
-                if "value" in data:
-                    return float(data["value"])
+                preds = data.get("predictions", [])
+                if preds:
+                    return float(preds[0].get("value", float("nan")))
                 raise RuntimeError(f"Unexpected response: {data}")
             except Exception as e:
                 if attempt == self.retries:
@@ -80,7 +105,8 @@ class Tox21Adapter:
         from biotoxbridge.features.fingerprints import morgan_fp
         features = morgan_fp(smiles, radius=self.radius, n_bits=self.n_bits).tolist()
         session  = requests.Session()
-        return {ep: self._predict_one(session, ep, features)
+        session.headers.update({"Authorization": f"Bearer {self.api_key}"})
+        return {ep: self._predict_one(session, _ENDPOINT_TO_MODEL.get(ep, ep), features)
                 for ep in self.endpoints}
 
     def score_records(
@@ -120,7 +146,8 @@ class Tox21Adapter:
 
             scores: dict[str, float] = {}
             for ep in self.endpoints:
-                scores[f"tox21_{ep}"] = self._predict_one(session, ep, features)
+                model_name = _ENDPOINT_TO_MODEL.get(ep, ep)
+                scores[f"tox21_{ep}"] = self._predict_one(session, model_name, features)
 
             results.append({**rec, **scores})
             if progress and i % 10 == 0:
