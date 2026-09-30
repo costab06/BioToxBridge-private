@@ -1,0 +1,62 @@
+experiment_id: liver_loael_v1
+description: "Chronic/subchronic oral rat microscopic liver LOAEL — Model A/B/D comparison"
+
+target:
+  source: toxrefdb_3_0
+  raw_file: data/raw/toxrefdb/toxrefdb_3_0_pod.csv
+  effect_substring: "pathology microscopic-liver-"
+  species: rat
+  route: Oral
+  study_types: [CHR, SUB]
+  duration_preference: [CHR, SUB]   # prefer CHR; fall back to SUB
+  pod_type: LOAEL
+  qualifier_exclude: [">"]          # reject greater-than-qualified values
+  aggregate: median
+  transform: log10
+  units: mg_kg_day
+
+chemistry:
+  resolver: epa_ctx_api
+  structure_field: qsarReadySmiles
+  fingerprint:
+    type: morgan
+    radius: 2
+    bits: 2048
+
+tox21_project:
+  model_set_id: tox21_continuous_v1
+  nnsd_client_url: "http://localhost:8080"
+  endpoints:
+    - NR-AR
+    - NR-AR-LBD
+    - NR-AhR
+    - NR-Aromatase
+    - NR-ER
+    - NR-ER-LBD
+    - NR-PPAR-gamma
+    - SR-ARE
+    - SR-ATAD5
+    - SR-HSE
+    - SR-MMP
+    - SR-p53
+
+split:
+  method: group_shuffle
+  group_by: structure_group
+  test_fraction: 0.20
+  seed: 42
+
+models:
+  - structure_only        # Model A: 2048 FP bits
+  - predicted_bioactivity # Model B: 12 Tox21 scores
+  - structure_plus_predicted  # Model D: FP + 12 scores
+
+evaluation:
+  metrics: [mae, rmse, r2, spearman]
+  bootstrap_iterations: 1000
+  bootstrap_seed: 42
+
+output:
+  interim_dir: data/interim
+  processed_dir: data/processed
+  splits_dir: data/splits
