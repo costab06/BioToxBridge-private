@@ -1,5 +1,40 @@
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# Local configuration and secrets
 .env
-data/
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build artifacts
+build/
+dist/
+
+# Local datasets and generated results
+data/raw/
+data/interim/
+data/processed/
+runs/
+models/downstream/
+
+# OS files
+.DS_Store
+Thumbs.db
