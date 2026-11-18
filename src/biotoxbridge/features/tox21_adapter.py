@@ -18,6 +18,7 @@ Usage:
 import os
 import sys
 import time
+import math
 from typing import Any
 
 # Canonical endpoint order — must match the frozen model set exactly.
@@ -86,7 +87,14 @@ class Tox21Adapter:
                 data = r.json()
                 preds = data.get("predictions", [])
                 if preds:
-                    return float(preds[0].get("value", float("nan")))
+                    value = float(preds[0].get("value", float("nan")))
+
+                    if not math.isfinite(value):
+                        raise ValueError(
+                            f"Non-finite prediction from {model_name}: {value}"
+                        )
+
+                    return value
                 raise RuntimeError(f"Unexpected response: {data}")
             except Exception as e:
                 if attempt == self.retries:
