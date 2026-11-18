@@ -61,13 +61,20 @@ def _git_commit(repo_dir: str | Path = ".") -> str:
 
 def write_run_manifest(run_dir: str | Path, config_path: str | Path,
                        source_manifest: dict, artifact_paths: dict,
-                       extra: dict | None = None) -> None:
+                       extra: dict | None = None,
+                       input_paths: dict | None = None,
+                       model_metadata: dict | None = None) -> None:
     """Write run_manifest.json recording config/data/model hashes and versions."""
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    artifacts = {k: {"path": str(v), "sha256": sha256(v)}
-                 for k, v in artifact_paths.items() if Path(v).exists()}
+    artifacts = {}
+    for name, path in artifact_paths.items():
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Required output artifact missing: {name}: {path}")
+        artifacts[name] = {"path": str(path), "sha256": sha256(path),
+                           "size_bytes": path.stat().st_size}
 
     manifest = {
         "git_commit":       _git_commit(),
@@ -78,9 +85,23 @@ def write_run_manifest(run_dir: str | Path, config_path: str | Path,
         "config_sha256":    sha256(config_path),
         "source_manifest":  source_manifest,
         "artifacts":        artifacts,
+        "inputs":           _hash_required_files(input_paths or {}),
+        "model_metadata":   model_metadata or {},
     }
     if extra:
         manifest.update(extra)
 
     (run_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"Run manifest written: {run_dir / 'run_manifest.json'}")
+
+
+def _hash_required_files(paths: dict) -> dict:
+    """Hash required input files; fail closed on missing files."""
+    result = {}
+    for name, path in paths.items():
+        p = Path(path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Required input artifact missing: {name}: {p}")
+        result[name] = {"path": str(p), "sha256": sha256(p),
+                        "size_bytes": p.stat().st_size}
+    return result

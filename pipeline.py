@@ -180,10 +180,22 @@ def run(config_path: str, reuse_split: bool = False) -> None:
         config_path       = config_path,
         extra             = {"run_id": run_id},
         source_manifest   = src_manifest,
+        input_paths       = {
+            "toxrefdb_pod": cfg["target"]["raw_file"],
+            "tox21_reference": Path("data/reference/legacy_pipeline/tox21_predictions.csv"),
+        },
+        model_metadata    = {
+            "model_set_id": cfg["tox21_project"]["model_set_id"],
+            "endpoints": cfg["tox21_project"]["endpoints"],
+            "fingerprint": cfg["chemistry"]["fingerprint"],
+            "split": cfg["split"],
+        },
         artifact_paths    = {
             "liver_master": processed_dir / "liver_master.csv",
-            "predictions":  pred_path,
-            "metrics":      metrics_path,
+            "split_manifest": splits_dir / "split_manifest.json",
+            "tox21_regression_audit": audit_dir / "tox21_regression.json",
+            "metrics": metrics_path,
+            **({"predictions": pred_path} if predictions_rows else {}),
         },
     )
 
