@@ -18,6 +18,7 @@ Usage:
 """
 
 import csv
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -91,15 +92,38 @@ def build_master(
 
         srec = scored_by_dtx[dtx]
 
-        # Check that all 12 Tox21 score columns are present and numeric
+        # Validate every endpoint before admitting a chemical to the master.
+        # Raw continuous model scores may legitimately be negative or > 1.
         missing_scores = [f for f in TOX21_SCORE_FIELDS
-                          if f not in srec or srec[f] is None or srec[f] == ""]
+                          if f not in srec or srec[f] is None
+                          or (isinstance(srec[f], str) and not srec[f].strip())]
         if missing_scores:
             excluded.append({
                 "dtxsid": dtx,
                 "preferred_name": trec.get("preferred_name", ""),
                 "exclusion_reason": "missing_tox21_scores",
                 "missing_fields": ",".join(missing_scores),
+            })
+            continue
+
+        validated_scores = {}
+        invalid_scores = []
+        for field in TOX21_SCORE_FIELDS:
+            try:
+                value = float(srec[field])
+            except (TypeError, ValueError, OverflowError):
+                invalid_scores.append(field)
+                continue
+            if not math.isfinite(value):
+                invalid_scores.append(field)
+                continue
+            validated_scores[field] = value
+        if invalid_scores:
+            excluded.append({
+                "dtxsid": dtx,
+                "preferred_name": trec.get("preferred_name", ""),
+                "exclusion_reason": "invalid_tox21_scores",
+                "invalid_fields": ",".join(invalid_scores),
             })
             continue
 
@@ -119,7 +143,7 @@ def build_master(
 
         # Tox21 scores
         for f in TOX21_SCORE_FIELDS:
-            row[f] = srec[f]
+            row[f] = validated_scores[f]
 
         master.append(row)
 
