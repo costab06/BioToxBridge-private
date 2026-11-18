@@ -49,10 +49,16 @@ def score_tox21(enriched: list[dict], cfg: dict, audit_dir: Path) -> list[dict]:
     if ref_csv.exists():
         try:
             report = adapter.regression_test(scored, str(ref_csv), tol=0.01)
-            (audit_dir / "tox21_regression.json").write_text(json.dumps(report, indent=2))
-            print(f"  Tox21 regression test: {'PASS' if report['all_pass'] else 'FAIL'}")
-        except (KeyError, ValueError) as e:
-            print(f"  Tox21 regression test skipped: {e}")
+        except (KeyError, ValueError) as exc:
+            report = {"status": "NOT_COMPARABLE", "all_pass": False,
+                      "reason": str(exc)}
+        (audit_dir / "tox21_regression.json").write_text(json.dumps(report, indent=2))
+        print(f"  Tox21 regression test: {report['status']}")
+    else:
+        report = {"status": "NOT_COMPARABLE", "all_pass": False,
+                  "reason": f"Reference file not found: {ref_csv}"}
+        (audit_dir / "tox21_regression.json").write_text(json.dumps(report, indent=2))
+        print("  Tox21 regression test: NOT_COMPARABLE")
     return scored
 
 
