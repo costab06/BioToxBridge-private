@@ -38,3 +38,15 @@ models/downstream/
 # OS files
 .DS_Store
 Thumbs.db
+
+# BioToxBridge datasets
+/data/raw/
+/data/interim/
+/data/processed/
+
+# Preserve legacy pipeline reference data
+!/data/reference/
+!/data/reference/legacy_pipeline/
+
+# Preserve reproducible split definitions
+!/data/splits/
