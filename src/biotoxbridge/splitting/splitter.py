@@ -57,6 +57,11 @@ def make_split(
     dtxsids = [r["dtxsid"]      for r in master]
     groups  = [r[group_field]   for r in master]
 
+    if len(set(dtxsids)) != len(dtxsids):
+        raise ValueError("Duplicate DTXSID in master dataset")
+    if any(g is None or g == "" for g in groups):
+        raise ValueError("Missing structure_group in master dataset")
+
     X_dummy = np.zeros(len(dtxsids))  # GroupShuffleSplit only needs shape
     gss = GroupShuffleSplit(n_splits=1, test_size=test_fraction,
                             random_state=seed)
@@ -105,6 +110,27 @@ def load_split(
     manifest = json.loads(Path(manifest_path).read_text())
     train_set = set(manifest["train_dtxsids"])
     test_set  = set(manifest["test_dtxsids"])
+
+    ids = [r["dtxsid"] for r in master]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate DTXSID in master dataset")
+    if len(train_set) != len(manifest["train_dtxsids"]) or len(test_set) != len(manifest["test_dtxsids"]):
+        raise ValueError("Duplicate chemical ID in frozen split")
+    if train_set & test_set:
+        raise ValueError("Train/test chemical ID overlap in frozen split")
+    if set(ids) != train_set | test_set:
+        raise ValueError("Frozen split does not exactly match current master chemicals")
+    group_field = manifest["group_field"]
+    groups_train = {r[group_field] for r in master if r["dtxsid"] in train_set}
+    groups_test = {r[group_field] for r in master if r["dtxsid"] in test_set}
+    if None in groups_train | groups_test or "" in groups_train | groups_test:
+        raise ValueError("Missing structure group in frozen split input")
+    if groups_train & groups_test:
+        raise ValueError("Structure group leakage in frozen split")
+    if (len(train_set) != manifest["n_train"] or len(test_set) != manifest["n_test"]
+            or len(groups_train) != manifest["n_train_groups"]
+            or len(groups_test) != manifest["n_test_groups"]):
+        raise ValueError("Frozen split counts do not match manifest")
 
     train = sorted([r for r in master if r["dtxsid"] in train_set],
                    key=lambda r: r["dtxsid"])

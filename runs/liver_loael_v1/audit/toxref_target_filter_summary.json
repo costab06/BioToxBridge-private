@@ -1,0 +1,20 @@
+{
+  "raw_file": "data/raw/toxrefdb/toxrefdb_3_0_pod.csv",
+  "total_input_rows": 42435,
+  "passed_all_filters": 387,
+  "distinct_chemicals": 191,
+  "aggregated_chemicals": 191,
+  "filters": {
+    "effect_substring": "pathology microscopic-liver-",
+    "species": "rat",
+    "route": "Oral",
+    "study_types": [
+      "CHR",
+      "SUB"
+    ],
+    "pod_type": "LOAEL",
+    "qualifier_exclude": [
+      ">"
+    ]
+  }
+}

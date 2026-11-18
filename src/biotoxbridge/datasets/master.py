@@ -65,7 +65,15 @@ def build_master(
       excluded : list of dicts explaining each dropped chemical
     """
     # Index scored records by dtxsid
-    scored_by_dtx: dict[str, dict] = {r["dtxsid"]: r for r in scored_records}
+    scored_by_dtx: dict[str, dict] = {}
+    for record in scored_records:
+        dtxsid = record["dtxsid"]
+        if dtxsid in scored_by_dtx:
+            raise ValueError(f"Duplicate scored DTXSID: {dtxsid}")
+        scored_by_dtx[dtxsid] = record
+    target_ids = [r["dtxsid"] for r in target_records]
+    if len(target_ids) != len(set(target_ids)):
+        raise ValueError("Duplicate target DTXSID")
 
     master: list[dict] = []
     excluded: list[dict] = []

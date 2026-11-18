@@ -20,6 +20,8 @@ import argparse
 import csv
 import json
 import sys
+from datetime import datetime, timezone
+from uuid import uuid4
 from pathlib import Path
 
 import yaml
@@ -38,108 +40,47 @@ def run(config_path: str, reuse_split: bool = False) -> None:
     interim_dir   = Path(cfg["output"]["interim_dir"])
     processed_dir = Path(cfg["output"]["processed_dir"])
     splits_dir    = Path(cfg["output"]["splits_dir"])
-    run_dir       = Path("runs") / exp_id
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex[:8]
+    run_dir       = Path("runs") / exp_id / run_id
     audit_dir     = run_dir / "audit"
+    # Keep experiment outputs isolated: no run writes a shared master/split path.
+    processed_dir = run_dir / "processed"
+    splits_dir = run_dir / "splits"
+    if reuse_split:
+        raise ValueError("--reuse-split requires a future explicit, validated split source; refusing implicit reuse")
     for d in (interim_dir, processed_dir, splits_dir, run_dir, audit_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    # ── Step 1: ToxRefDB target ────────────────────────────────────────────────
-    print("\n=== Step 1: ToxRefDB target ===")
-    from biotoxbridge.targets.toxref_target import build_target
-    tc = cfg["target"]
-    target = build_target(
-        pod_csv             = tc["raw_file"],
-        effect_substring    = tc["effect_substring"],
-        species             = tc["species"],
-        route               = tc["route"],
-        study_types         = tuple(tc["study_types"]),
-        duration_preference = tuple(tc["duration_preference"]),
-        pod_type            = tc["pod_type"],
-        qualifier_exclude   = tuple(tc.get("qualifier_exclude", [">"])),
-        audit_csv           = audit_dir / "toxref_target.csv",
+    # Scientific stages are independently callable; orchestration stays here.
+    from biotoxbridge.stages import (
+        build_toxicity_target, resolve_chemistry, group_structures,
+        score_tox21, assemble_master, freeze_split,
     )
+    from biotoxbridge.chemistry.structure_groups import group_summary
+
+    print("\n=== Step 1: ToxRefDB target ===")
+    target = build_toxicity_target(cfg, audit_dir)
     print(f"  Target chemicals: {len(target)}")
 
-    # ── Step 2: Chemical resolver ──────────────────────────────────────────────
     print("\n=== Step 2: Chemical resolver ===")
-    from biotoxbridge.chemistry.resolver import resolve, write_audit
-    dtxsids = [r["dtxsid"] for r in target]
-    resolved, missing = resolve(
-        dtxsids,
-        cache_csv = interim_dir / "dsstox_cache.csv",
-    )
-    write_audit(
-        resolved, missing,
-        resolved_path = audit_dir / "resolver_resolved.csv",
-        missing_path  = audit_dir / "resolver_missing.csv",
-    )
+    resolved, missing = resolve_chemistry(target, interim_dir, audit_dir)
     print(f"  Resolved: {len(resolved)}  Missing: {len(missing)}")
 
-    # ── Step 3: Structure groups + fingerprints ────────────────────────────────
     print("\n=== Step 3: Structure groups ===")
-    from biotoxbridge.chemistry.structure_groups import assign_groups, group_summary
-    enriched, sg_failed = assign_groups(
-        resolved, smiles_field=cfg["chemistry"]["structure_field"]
-    )
+    enriched, sg_failed = group_structures(resolved, cfg)
     print(f"  {group_summary(enriched)}")
 
-    # ── Step 4: Tox21 scoring ──────────────────────────────────────────────────
     print("\n=== Step 4: Tox21 scoring ===")
-    from biotoxbridge.features.tox21_adapter import Tox21Adapter
-    tp = cfg["tox21_project"]
-    adapter = Tox21Adapter(
-        base_url  = tp["nnsd_client_url"],
-        endpoints = tp["endpoints"],
-    )
-    scored = adapter.score_records(enriched, smiles_field="canonical_smiles")
+    scored = score_tox21(enriched, cfg, audit_dir)
 
-    # Regression-test against legacy predictions if available and compatible
-    ref_csv = Path("data/reference/legacy_pipeline/tox21_predictions.csv")
-    if ref_csv.exists():
-        try:
-            report = adapter.regression_test(scored, str(ref_csv), tol=0.01)
-            (audit_dir / "tox21_regression.json").write_text(
-                json.dumps(report, indent=2)
-            )
-            status = "PASS" if report["all_pass"] else "FAIL"
-            print(f"  Tox21 regression test: {status}")
-        except (KeyError, ValueError) as e:
-            print(f"  Tox21 regression test skipped: {e}")
-
-    # ── Step 5: Master dataset ─────────────────────────────────────────────────
     print("\n=== Step 5: Master dataset ===")
-    from biotoxbridge.datasets.master import build_master
-    master, excluded = build_master(
-        target_records = target,
-        scored_records = scored,
-        output_csv     = processed_dir / "liver_master.csv",
-        audit_csv      = audit_dir / "master_exclusions.csv",
-    )
+    master, excluded = assemble_master(target, scored, processed_dir, audit_dir)
     print(f"  Master: {len(master)} chemicals")
-
     if not master:
-        print("ERROR: empty master dataset — check audit logs.", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("Empty master dataset — check audit logs")
 
-    # ── Step 6: Split ──────────────────────────────────────────────────────────
     print("\n=== Step 6: Train/test split ===")
-    from biotoxbridge.splitting.splitter import make_split, load_split
-    manifest_path = splits_dir / "split_manifest.json"
-
-    if reuse_split and manifest_path.exists():
-        print(f"  Loading frozen split from {manifest_path}")
-        train, test = load_split(master, manifest_path)
-    else:
-        sp = cfg["split"]
-        manifest = make_split(
-            master,
-            splits_dir    = splits_dir,
-            test_fraction = sp["test_fraction"],
-            seed          = sp["seed"],
-            group_field   = sp["group_by"],
-        )
-        train, test = load_split(master, manifest_path)
-
+    train, test = freeze_split(master, cfg, splits_dir)
     print(f"  Train: {len(train)}  Test: {len(test)}")
 
     # ── Steps 7 + 8: Project → Train → Evaluate ───────────────────────────────
@@ -237,6 +178,7 @@ def run(config_path: str, reuse_split: bool = False) -> None:
     write_run_manifest(
         run_dir,
         config_path       = config_path,
+        extra             = {"run_id": run_id},
         source_manifest   = src_manifest,
         artifact_paths    = {
             "liver_master": processed_dir / "liver_master.csv",

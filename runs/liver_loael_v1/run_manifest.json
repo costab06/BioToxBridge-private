@@ -1,0 +1,23 @@
+{
+  "git_commit": "7269164336f7840de31a065e4e8207083a41934a",
+  "timestamp": "2026-09-30T18:26:31.188809+00:00",
+  "python_version": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "config_file": "config/experiments/liver_loael_v1.yaml",
+  "config_sha256": "59397093dc41355513d558fd820f0f62314953684c45b24cc5620ba1579069ff",
+  "source_manifest": {},
+  "artifacts": {
+    "liver_master": {
+      "path": "data/processed/liver_master.csv",
+      "sha256": "540692330b9c02ac8796b094c138a52ddc7a92ab44d1c167eb7a7aeeef409eb5"
+    },
+    "predictions": {
+      "path": "runs/liver_loael_v1/predictions.csv",
+      "sha256": "dbb519c41d0abb9db8e64dc1bb0f9fd01ee9a969cac52bdebdf81e08ab332117"
+    },
+    "metrics": {
+      "path": "runs/liver_loael_v1/metrics.json",
+      "sha256": "6cfb2ac9e650cdea0bf7b9165642062b4474346106b1746a8bfee9b6796bf8b0"
+    }
+  }
+}
