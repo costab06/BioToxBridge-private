@@ -3,33 +3,126 @@
 import argparse
 import asyncio
 import json
+from pathlib import Path
 from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid5
 from biotoxbridge.oaf.agent import EVENT_REQUESTED
 from biotoxbridge.oaf.artifacts import publish_json
 from biotoxbridge.oaf.esol_lifecycle_orchestration import STREAM
 
+
 async def main(a):
     from shared.eventbus.redis import RedisEventBus
     from shared.eventbus.events import EventEnvelope
     from shared.correlation.registry import CorrelationRegistry
-    config = {'lifecycle_v1': True, 'seed': a.seed,
-              'policy': {'max_mae': a.max_mae, 'min_r2': a.min_r2,
-                         'max_mae_regression': a.max_mae_regression}}
-    publish_json(a.artifact_root, a.run_id, 'lifecycle-config', config)
-    ref = publish_json(a.artifact_root, a.run_id, 'lifecycle-esol_acquire-input',
-                       {'source': a.source, **({'expected_sha256': a.expected_sha256} if a.expected_sha256 else {})})
+
+    from biotoxbridge.oaf.submission import (
+        fingerprint,
+        submit_once,
+    )
+
+    config = {
+        'lifecycle_v1': True,
+        'seed': a.seed,
+        'policy': {
+            'max_mae': a.max_mae,
+            'min_r2': a.min_r2,
+            'max_mae_regression': a.max_mae_regression,
+        },
+    }
+
+
+
+    acquire_input = {
+        'source': a.source,
+        **(
+            {'expected_sha256': a.expected_sha256}
+            if a.expected_sha256 else {}
+        ),
+    }
+
+    submission_fingerprint = fingerprint({
+        'stream': a.stream,
+        'artifact_root': str(Path(a.artifact_root).resolve()),
+        'config': config,
+        'input': acquire_input,
+    })
+    # Immutable artifacts: identical retries reuse the same files.
+    publish_json(
+        a.artifact_root,
+        a.run_id,
+        'lifecycle-config',
+        config,
+    )
+
+    ref = publish_json(
+        a.artifact_root,
+        a.run_id,
+        'lifecycle-esol_acquire-input',
+        acquire_input,
+    )
+
     bus = RedisEventBus(a.redis_url)
+
     try:
-        correlation = await CorrelationRegistry(bus.redis).create(
-            'biotoxbridge.esol.lifecycle', datetime.now(timezone.utc), {'run_id': a.run_id})
-        event = EventEnvelope(event_id=uuid5(NAMESPACE_URL, f'biotoxbridge:lifecycle:{a.run_id}:esol_acquire'),
-                              event_type=EVENT_REQUESTED, source_agent='biotoxbridge-lifecycle-submit',
-                              correlation_id=correlation.correlation_id,
-                              payload={'run_id': a.run_id, 'stage': 'esol_acquire', 'input_artifact': ref})
-        message_id = await bus.publish(a.stream, event)
-        print(json.dumps({'run_id': a.run_id, 'message_id': message_id,
-                          'correlation_id': str(correlation.correlation_id)}, indent=2))
+        # Stable identity, using the existing registry's derivation.
+        identity_time = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+        from shared.correlation.registry import CorrelationRecord
+
+        registry = CorrelationRegistry(bus.redis)
+
+        correlation_id = registry.derive_id(
+            'biotoxbridge.esol.lifecycle',
+            identity_time,
+            {
+                'run_id': a.run_id,
+                'submission_fingerprint': submission_fingerprint,
+            },
+        )
+
+        correlation = CorrelationRecord(
+            correlation_id=correlation_id,
+            trigger_type='biotoxbridge.esol.lifecycle',
+            trigger_timestamp=identity_time,
+            business_fields={
+                'run_id': a.run_id,
+                'submission_fingerprint': submission_fingerprint,
+            },
+            created_at=identity_time,
+        )
+
+        event = EventEnvelope(
+            event_id=uuid5(
+                NAMESPACE_URL,
+                f'biotoxbridge:lifecycle:{a.run_id}:esol_acquire',
+            ),
+            event_type=EVENT_REQUESTED,
+            source_agent='biotoxbridge-lifecycle-submit',
+            correlation_id=correlation.correlation_id,
+            payload={
+                'run_id': a.run_id,
+                'stage': 'esol_acquire',
+                'input_artifact': ref,
+            },
+        )
+
+        result = await submit_once(
+            bus.redis,
+            stream=a.stream,
+            run_id=a.run_id,
+            fingerprint_value=submission_fingerprint,
+            event=event,
+            correlation_record=correlation,
+        )
+
+        print(json.dumps({
+            'run_id': a.run_id,
+            'message_id': result.message_id,
+            'correlation_id': str(result.correlation_id),
+            'created': result.created,
+        }, indent=2))
+
     finally:
         await bus.close()
 
