@@ -63,6 +63,15 @@ def test_empty_master_rejected(tmp_path, monkeypatch):
 
 def test_stage_registry_is_allowlisted(tmp_path):
     functions = scientific_stages({}, tmp_path)
-    assert set(functions) == {'toxicity_target', 'chemistry_resolution',
-                              'structure_grouping', 'tox21_scoring',
-                              'master_assembly', 'dataset_split'}
+
+    assert set(functions) == {
+        "toxicity_target",
+        "chemistry_resolution",
+        "structure_grouping",
+        "tox21_scoring",
+        "master_assembly",
+        "dataset_split",
+        "model_training",
+        "model_evaluation",
+        "experiment_reporting",
+    }

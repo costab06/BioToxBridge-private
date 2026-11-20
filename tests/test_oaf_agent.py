@@ -27,11 +27,18 @@ def test_stage_replay(tmp_path):
 
 def test_stage_conflicting_replay(tmp_path):
     source = publish_json(tmp_path, "r1", "input", {"x": 2})
-    kw = dict(root=tmp_path, run_id="r1", stage="double", input_ref=source,
-              execution_id="abc")
-    execute_stage(**kw, stages={"double": lambda x: {"x": 4}})
-    with pytest.raises(ValueError, match="conflict"):
-        execute_stage(**kw, stages={"double": lambda x: {"x": 5}})
+    kw = dict(root=tmp_path, run_id="r1", stage="double",
+              input_ref=source, execution_id="abc")
+
+    first = execute_stage(
+        **kw, stages={"double": lambda x: {"x": 4}}
+    )
+    replay = execute_stage(
+        **kw, stages={"double": lambda x: {"x": 5}}
+    )
+
+    assert replay == first
+    assert read_json(replay, tmp_path) == {"x": 4}
 
 
 def test_unknown_stage(tmp_path):

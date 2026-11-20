@@ -14,6 +14,7 @@ from biotoxbridge.oaf.artifacts import publish_json, read_json
 STAGES = (
     "toxicity_target", "chemistry_resolution", "structure_grouping",
     "tox21_scoring", "master_assembly", "dataset_split",
+    "model_training", "model_evaluation", "experiment_reporting",
 )
 EVENT_FINISHED = "biotoxbridge.workflow.finished"
 EVENT_STARTED = "biotoxbridge.workflow.started"
@@ -64,8 +65,10 @@ def transition(event, root: str | Path, envelope_type):
     index = STAGES.index(stage)
     if index + 1 < len(STAGES):
         return [_request(event, STAGES[index + 1], ref, envelope_type)]
-    if not isinstance(result.get("train"), list) or not isinstance(result.get("test"), list):
-        raise ValueError("Final split must contain train and test lists")
+    if not isinstance(result.get("metrics"), dict) or not isinstance(result.get("comparison"), dict):
+        raise ValueError("Final report must contain metrics and comparison")
+    if not isinstance(result.get("train_count"), int) or not isinstance(result.get("test_count"), int):
+        raise ValueError("Final report must contain train/test counts")
     return [envelope_type(
         event_id=uuid5(event.event_id, "biotoxbridge:finished"),
         event_type=EVENT_FINISHED,
@@ -73,7 +76,7 @@ def transition(event, root: str | Path, envelope_type):
         correlation_id=event.correlation_id,
         causation_id=event.event_id,
         payload={"run_id": run_id, "output_artifact": ref,
-                 "train_count": len(result["train"]), "test_count": len(result["test"])},
+                 "train_count": result["train_count"], "test_count": result["test_count"]},
     )]
 
 

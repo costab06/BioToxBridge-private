@@ -67,6 +67,20 @@ def scientific_stages(config: dict, run_dir: str | Path,
         train, test = scientific.freeze_split(value['master'], config, splits)
         return {'train': train, 'test': test, 'excluded': value.get('excluded', [])}
 
+    from biotoxbridge.oaf.modeling import train_models, evaluate_models, report_models
+
+    def model_training(value: Any) -> dict:
+        value = mapping(value, 'train', 'test')
+        return train_models(value, config)
+
+    def model_evaluation(value: Any) -> dict:
+        value = mapping(value, 'models', 'train_count', 'test_count')
+        return evaluate_models(value, config)
+
+    def experiment_reporting(value: Any) -> dict:
+        value = mapping(value, 'models', 'metrics', 'comparison')
+        return report_models(value, run_dir)
+
     return {
         'toxicity_target': target,
         'chemistry_resolution': resolve,
@@ -74,4 +88,7 @@ def scientific_stages(config: dict, run_dir: str | Path,
         'tox21_scoring': score,
         'master_assembly': master,
         'dataset_split': split,
+        'model_training': model_training,
+        'model_evaluation': model_evaluation,
+        'experiment_reporting': experiment_reporting,
     }
