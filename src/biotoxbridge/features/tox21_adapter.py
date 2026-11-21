@@ -18,6 +18,7 @@ Usage:
 import os
 import sys
 import time
+import math
 from typing import Any
 
 # Canonical endpoint order — must match the frozen model set exactly.
@@ -86,7 +87,14 @@ class Tox21Adapter:
                 data = r.json()
                 preds = data.get("predictions", [])
                 if preds:
-                    return float(preds[0].get("value", float("nan")))
+                    value = float(preds[0].get("value", float("nan")))
+
+                    if not math.isfinite(value):
+                        raise ValueError(
+                            f"Non-finite prediction from {model_name}: {value}"
+                        )
+
+                    return value
                 raise RuntimeError(f"Unexpected response: {data}")
             except Exception as e:
                 if attempt == self.retries:
@@ -166,43 +174,90 @@ class Tox21Adapter:
         reference_csv: str,
         tol: float = 0.01,
     ) -> dict:
-        """
-        Compare scored output against a reference CSV (tox21_predictions.csv).
+        """Compare continuous Tox21 scores by canonical SMILES.
 
-        Returns a report dict with per-endpoint max_abs_diff and pass/fail.
+        The legacy CSV uses SMILES, Valid, and <endpoint>_score columns.
+        A partial match is reported separately from the score comparison.
         """
         import csv
         import math
+        from biotoxbridge.chemistry.structure_groups import _canonicalize
 
-        ref: dict[str, dict] = {}
+        if not math.isfinite(tol) or tol < 0:
+            raise ValueError("tol must be finite and nonnegative")
+
+        required = {"SMILES", "Valid"} | {f"{ep}_score" for ep in self.endpoints}
+        reference = {}
+        invalid_reference = 0
         with open(reference_csv, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                ref[row["dtxsid"]] = row
-
-        report: dict[str, Any] = {"tol": tol, "endpoints": {}}
-        all_pass = True
-
-        for ep in self.endpoints:
-            col = f"tox21_{ep}"
-            diffs = []
-            for rec in scored:
-                dtx = rec.get("dtxsid", "")
-                if dtx not in ref:
+            reader = csv.DictReader(f)
+            missing = required - set(reader.fieldnames or [])
+            if missing:
+                raise ValueError(f"Reference CSV missing columns: {sorted(missing)}")
+            for row in reader:
+                if str(row["Valid"]).strip() not in {"1", "true", "True"}:
+                    invalid_reference += 1
                     continue
-                ref_val = ref[dtx].get(col)
-                if ref_val is None or ref_val == "":
+                smiles = str(row["SMILES"] or "").strip()
+                canon = _canonicalize(smiles) if smiles else None
+                if canon is None:
+                    invalid_reference += 1
                     continue
-                diff = abs(rec[col] - float(ref_val))
-                diffs.append(diff)
-            max_diff = max(diffs) if diffs else float("nan")
-            passed   = (not math.isnan(max_diff)) and (max_diff <= tol)
-            if not passed:
-                all_pass = False
-            report["endpoints"][ep] = {
+                if canon in reference:
+                    raise ValueError(f"Duplicate reference structure: {canon}")
+                reference[canon] = row
+
+        comparisons = {ep: [] for ep in self.endpoints}
+        matched = 0
+        unmatched = 0
+        seen = set()
+        for rec in scored:
+            smiles = str(rec.get("canonical_smiles") or "").strip()
+            canon = _canonicalize(smiles) if smiles else None
+            if canon is None:
+                unmatched += 1
+                continue
+            if canon in seen:
+                raise ValueError(f"Duplicate scored structure: {canon}")
+            seen.add(canon)
+            ref = reference.get(canon)
+            if ref is None:
+                unmatched += 1
+                continue
+            matched += 1
+            for ep in self.endpoints:
+                try:
+                    actual = float(rec[f"tox21_{ep}"])
+                    expected = float(ref[f"{ep}_score"])
+                except (KeyError, ValueError, TypeError) as exc:
+                    raise ValueError(f"Invalid score for {ep}, structure {canon}") from exc
+                if not math.isfinite(actual) or not math.isfinite(expected):
+                    raise ValueError(f"Non-finite score for {ep}, structure {canon}")
+                comparisons[ep].append(abs(actual - expected))
+
+        endpoints = {}
+        for ep, diffs in comparisons.items():
+            max_diff = max(diffs) if diffs else None
+            endpoints[ep] = {
                 "n_compared": len(diffs),
                 "max_abs_diff": max_diff,
-                "pass": passed,
+                "pass": max_diff is not None and max_diff <= tol,
             }
-
-        report["all_pass"] = all_pass
-        return report
+        if matched == 0:
+            status = "NOT_COMPARABLE"
+        elif all(v["pass"] for v in endpoints.values()):
+            status = "PASS"
+        else:
+            status = "FAIL"
+        return {
+            "status": status,
+            "all_pass": status == "PASS",
+            "tol": tol,
+            "n_scored": len(scored),
+            "n_reference_valid": len(reference),
+            "n_reference_invalid": invalid_reference,
+            "n_matched": matched,
+            "n_unmatched": unmatched,
+            "coverage": matched / len(scored) if scored else 0.0,
+            "endpoints": endpoints,
+        }
